@@ -1,0 +1,90 @@
+
+name: Build Allan ADMIN IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-admin:
+    runs-on: macos-14
+
+    steps:
+      - name: Baixar arquivos do repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar ambiente
+        run: |
+          echo "Verificando arquivos..."
+          ls -la
+
+          ZIP=$(find . -maxdepth 2 -type f -name "3105-ADMIN-PRONTO.zip" -print -quit)
+
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: 3105-ADMIN-PRONTO.zip nao encontrado."
+            exit 1
+          fi
+
+          echo "Extraindo: $ZIP"
+          unzip -o "$ZIP" -d ./admin-extraido
+
+      - name: Localizar projeto Xcode
+        id: project
+        run: |
+          echo "Removendo arquivos auxiliares..."
+          find . -type d -name "__MACOSX" -prune -exec rm -rf {} +
+
+          PROJECT=$(find . -type d -name "*.xcodeproj" \
+            -exec test -f "{}/project.pbxproj" \; \
+            -print -quit)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERRO: Projeto Xcode valido nao encontrado."
+            find . -name "*.xcodeproj" -print
+            exit 1
+          fi
+
+          echo "Projeto encontrado: $PROJECT"
+          echo "project_path=$PROJECT" >> "$GITHUB_OUTPUT"
+
+      - name: Validar projeto
+        run: |
+          xcodebuild -list \
+            -project "${{ steps.project.outputs.project_path }}"
+
+      - name: Compilar ADMIN
+        run: |
+          xcodebuild \
+            -project "${{ steps.project.outputs.project_path }}" \
+            -scheme "3105 ADMIN" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+      - name: Gerar IPA
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos \
+            -maxdepth 1 -name "*.app" -print -quit)
+
+          if [ -z "$APP" ]; then
+            echo "ERRO: Aplicativo compilado nao encontrado."
+            exit 1
+          fi
+
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+
+          zip -r Allan-ADMIN.ipa Payload
+          rm -rf Payload
+
+      - name: Disponibilizar IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Allan-ADMIN-IPA
+          path: Allan-ADMIN.ipa
+          if-no-files-found: error
