@@ -1,0 +1,89 @@
+
+name: Build Allan IOS EXTERNAL ADMIN
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-admin:
+    runs-on: macos-15
+
+    steps:
+      - name: Baixar arquivos do repositório
+        uses: actions/checkout@v4
+
+      - name: Selecionar Xcode 16.2
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Localizar projeto Xcode
+        run: |
+          echo "Diretório atual:"
+          pwd
+
+          echo "Conteúdo da raiz:"
+          ls -la
+
+          echo "Projetos Xcode encontrados:"
+          find . -name "*.xcodeproj" -print
+
+      - name: Identificar caminho do projeto
+        id: project
+        run: |
+          PROJECT=$(find . -name "3105Admin.xcodeproj" -type d -print -quit)
+
+          if [ -z "$PROJECT" ]; then
+            echo "ERRO: 3105Admin.xcodeproj não foi encontrado."
+            echo "Confira se os arquivos do ADMIN foram enviados ao repositório."
+            exit 1
+          fi
+
+          echo "Projeto encontrado: $PROJECT"
+          echo "project_path=$PROJECT" >> "$GITHUB_OUTPUT"
+
+      - name: Validar projeto
+        run: |
+          xcodebuild -list \
+            -project "${{ steps.project.outputs.project_path }}"
+
+      - name: Compilar ADMIN
+        run: |
+          xcodebuild \
+            -project "${{ steps.project.outputs.project_path }}" \
+            -scheme "3105 ADMIN" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$RUNNER_TEMP/ADMIN.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Verificar aplicativo gerado
+        run: |
+          APP=$(find "$RUNNER_TEMP/ADMIN.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
+
+          if [ -z "$APP" ]; then
+            echo "ERRO: aplicativo não encontrado no Archive."
+            exit 1
+          fi
+
+          echo "Aplicativo encontrado: $APP"
+
+      - name: Gerar IPA
+        run: |
+          APP=$(find "$RUNNER_TEMP/ADMIN.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)
+
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry "3105-ADMIN.ipa" Payload
+
+      - name: Enviar IPA para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3105-ADMIN-IPA
+          path: 3105-ADMIN.ipa
+          if-no-files-found: error
