@@ -1,0 +1,46 @@
+
+name: Build Allan IOS EXTERNAL ADMIN
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Validate project
+        run: |
+          xcodebuild -list -project "3105-ADMIN/3105Admin.xcodeproj"
+
+      - name: Build unsigned archive
+        run: |
+          xcodebuild \
+            -project "3105-ADMIN/3105Admin.xcodeproj" \
+            -scheme "3105 ADMIN" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$RUNNER_TEMP/ADMIN.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R "$RUNNER_TEMP/ADMIN.xcarchive/Products/Applications/AllanIOS.app" Payload/
+          zip -qry "AllanIOS.ipa" Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AllanIOS-unsigned
+          path: AllanIOS.ipa
